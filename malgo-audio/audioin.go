@@ -9,10 +9,10 @@ import (
 	"go.viam.com/rdk/logging"
 	"go.viam.com/rdk/resource"
 
-	"github.com/gen2brain/malgo"
+	malgo "github.com/gen2brain/malgo"
 )
 
-var Model = resource.NewModel("viam", "sensor", "audio-in")
+var Model = resource.NewModel("viam-labs", "sensor", "audio-in")
 
 type Config struct {
 	Duration time.Duration `json:"duration"`
@@ -83,6 +83,7 @@ func (sensor *audioIn) Reconfigure(ctx context.Context, deps resource.Dependenci
 	defer sensor.mu.Unlock()
 
 	sensor.defaultDuration = duration
+	sensor.logger.Debug("Current duration setting: ", sensor.defaultDuration*time.Millisecond)
 
 	if sensor.mContext != nil || sensor.mDevice != nil {
 		return nil
@@ -96,13 +97,26 @@ func (sensor *audioIn) Reconfigure(ctx context.Context, deps resource.Dependenci
 	}
 
 	sensor.mContext, err = malgo.InitContext(nil, malgo.ContextConfig{}, func(message string) {
-		sensor.logger.Info(message)
+		sensor.logger.Debug(message)
 	})
 	if err != nil {
 		return err
 	}
 
+	infos, err := sensor.mContext.Devices(malgo.Capture)
+	if err != nil {
+		sensor.logger.Error("could not find capture devices")
+		return err
+	}
+
+	for _, info := range infos {
+		sensor.logger.Debug(info.Name(), info.IsDefault, info.String())
+	}
+
+	selectedDevice := infos[0]
+
 	deviceConfig := malgo.DefaultDeviceConfig(malgo.Capture)
+	deviceConfig.Capture.DeviceID = selectedDevice.ID.Pointer()
 	deviceConfig.Capture.Format = malgo.FormatS16
 	deviceConfig.Capture.Channels = 1
 	deviceConfig.SampleRate = 44100
@@ -112,10 +126,10 @@ func (sensor *audioIn) Reconfigure(ctx context.Context, deps resource.Dependenci
 	sensor.pCapturedSamples = make([]byte, 0)
 
 	sizeInBytes := uint32(malgo.SampleSizeInBytes(deviceConfig.Capture.Format))
-	onRecvFrames := func(pSample2, pSample []byte, framecount uint32) {
+	onRecvFrames := func(_outputSamples, inputSamples []byte, framecount uint32) {
 		sampleCount := framecount * deviceConfig.Capture.Channels * sizeInBytes
 		newCapturedSampleCount := sensor.pCapturedSampleCount + sampleCount
-		sensor.pCapturedSamples = append(sensor.pCapturedSamples, pSample...)
+		sensor.pCapturedSamples = append(sensor.pCapturedSamples, inputSamples...)
 		sensor.pCapturedSampleCount = newCapturedSampleCount
 	}
 	capturedCallbacks := malgo.DeviceCallbacks{
@@ -139,41 +153,41 @@ func (sensor *audioIn) DoCommand(ctx context.Context, cmd map[string]interface{}
 }
 
 func (sensor *audioIn) Readings(ctx context.Context, extra map[string]interface{}) (map[string]interface{}, error) {
-	// duration := extra["duration"].(time.Duration)
-
-	// if duration == 0 {
-	// 	duration = sensor.defaultDuration
-	// }
 	duration := sensor.defaultDuration
-	sensor.logger.Info("Gathering Readings...")
 
-	err := sensor.mDevice.Start()
-	if err != nil {
+	if extra != nil {
+		extraDuration, ok := extra["duration"].(float64)
+		if ok {
+			duration = time.Duration(extraDuration)
+		}
+	}
+	sensor.logger.Debug("Gathering Readings...")
+
+	sensor.pCapturedSampleCount = 0
+	clear(sensor.pCapturedSamples)
+	sensor.pCapturedSamples = make([]byte, 0)
+
+	if err := sensor.mDevice.Start(); err != nil {
 		sensor.logger.Error("Unable to start capture device")
 		return nil, err
 	}
 
+	sensor.logger.Debug("Waiting for ", duration*time.Millisecond)
 	time.Sleep(duration * time.Millisecond)
 
-	err = sensor.mDevice.Stop()
-
-	if err != nil {
+	if err := sensor.mDevice.Stop(); err != nil {
 		sensor.logger.Error("Unable to stop capture device")
 		return nil, err
 	}
 
-	defer func() {
-		sensor.logger.Info("Resetting values")
-		sensor.pCapturedSampleCount = 0
-		clear(sensor.pCapturedSamples)
-	}()
+	sensor.logger.Debug("Sending Readings...")
+	sensor.logger.Debug("Sample count: ", sensor.pCapturedSampleCount)
+	readings := map[string]interface{}{
+		"SampleCount": sensor.pCapturedSampleCount,
+		"Samples":     sensor.pCapturedSamples,
+	}
 
-	sensor.logger.Info("Sending Readings...")
-
-	return map[string]interface{}{
-		"sampleCount": sensor.pCapturedSampleCount,
-		"samples":     sensor.pCapturedSamples,
-	}, nil
+	return readings, nil
 }
 
 func (sensor *audioIn) Close(cts context.Context) error {

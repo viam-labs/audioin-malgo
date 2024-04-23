@@ -1,6 +1,6 @@
 # audioin-malgo
 
-**Currently unpublished and a work-in-progress**
+**Currently unpublished and a proof of concept**
 
 This module implements the [`rdk:component:sensor` API](https://docs.viam.com/components/sensor/) in an `viam-labs:sensor:audio-in` model.
 With this model, you can capture audio data from any audio input, like a microphone, as a sensor.

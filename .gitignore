@@ -1,2 +1,4 @@
-module.tar.gz
+dist/
 bin/
+export-data/
+test.wav

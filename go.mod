@@ -3,7 +3,9 @@ module github.com/viam-labs/audioin-malgo
 go 1.22.1
 
 require (
-	github.com/gen2brain/malgo v0.11.10
+	github.com/gen2brain/malgo v0.11.21
+	github.com/go-audio/audio v1.0.0
+	github.com/go-audio/wav v1.1.0
 	go.viam.com/rdk v0.23.2
 	go.viam.com/utils v0.1.65
 )
@@ -33,6 +35,7 @@ require (
 	github.com/erikstmartin/go-testdb v0.0.0-20160219214506-8d10e4a1bae5 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/fullstorydev/grpcurl v1.8.6 // indirect
+	github.com/go-audio/riff v1.0.0 // indirect
 	github.com/go-fonts/liberation v0.3.0 // indirect
 	github.com/go-gl/mathgl v1.0.0 // indirect
 	github.com/go-latex/latex v0.0.0-20230307184459-12ec69307ad9 // indirect
